@@ -13,7 +13,6 @@ import {
   Clock,
   ChevronDown,
   TrendingUp,
-  Info,
 } from 'lucide-react'
 
 export default function App() {
@@ -89,6 +88,43 @@ export default function App() {
       return
     }
     setUserProfile(data)
+    
+    // Check for daily login bonus
+    await checkDailyLoginBonus(data)
+  }
+
+  async function checkDailyLoginBonus(profile) {
+    const today = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD format
+    const lastLogin = profile.last_login_date
+
+    // If last login was before today, award +1 token
+    if (lastLogin !== today) {
+      const newTokenCount = profile.tokens + 1
+
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          tokens: newTokenCount,
+          last_login_date: today
+        })
+        .eq('id', session.user.id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Daily bonus error:', error)
+        return
+      }
+
+      // Update local state
+      setUserProfile(data)
+      
+      // Show success message
+      toast.success(`🎁 Daily Login Bonus: +1 Token!`, {
+        duration: 4000,
+        icon: '🪙',
+      })
+    }
   }
 
   async function fetchMatchups() {
@@ -367,56 +403,6 @@ export default function App() {
     setLoading(false)
   }
 
-  async function cancelTicket(entryGroup) {
-    // Show warning toast
-    toast('⚠️ Warning: Unlocking will return token and void entry', {
-      duration: 4000,
-      icon: '⚠️',
-    })
-
-    // Wait a moment for user to see the warning
-    await new Promise(resolve => setTimeout(resolve, 500))
-
-    if (!confirm('Unlock this ticket? You will get your token(s) back but cannot win points.')) {
-      return
-    }
-
-    setLoading(true)
-
-    const picks = activeEntries.filter((p) => p.entry_group === entryGroup)
-    const wager = picks[0]?.wager_amount || 1
-
-    // Mark as claimed (voided) and return tokens
-    const { error: updateError } = await supabase
-      .from('user_picks')
-      .update({ is_claimed: true })
-      .eq('entry_group', entryGroup)
-
-    if (updateError) {
-      console.error('Unlock error:', updateError)
-      toast.error('Failed to unlock ticket')
-      setLoading(false)
-      return
-    }
-
-    // Return tokens to user
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ beta_tokens: userProfile.beta_tokens + wager })
-      .eq('id', session.user.id)
-
-    if (profileError) {
-      console.error('Token return error:', profileError)
-      toast.error('Failed to return tokens')
-    } else {
-      toast.success(`Ticket unlocked. ${wager} token${wager > 1 ? 's' : ''} returned!`)
-      fetchProfile()
-      fetchHistory()
-    }
-
-    setLoading(false)
-  }
-
   // ===== COMPUTED VALUES =====
   const selectionCount = Object.keys(selections).length
   const potentialWin =
@@ -487,22 +473,16 @@ export default function App() {
     <div className="min-h-screen bg-app-bg pb-24">
       {/* Header */}
       <nav className="bg-nav-bg border-b border-gray-800 px-4 py-4 sticky top-0 z-40">
-  <div className="flex justify-between items-center max-w-md mx-auto">
-    <div>
-      <h1 className="text-xl font-black italic uppercase text-white">
-        Parlay-A-Day
-      </h1>
-      <p className="text-[10px] text-gray-500 font-bold uppercase">
-        {userProfile?.username || 'Player'}
-      </p>
-    </div>
-    <div className="flex items-center gap-2">
-      <button
-        onClick={() => setActiveTab('info')}
-        className="p-2 rounded-lg hover:bg-gray-800/50 transition-all"
-      >
-        <Info size={20} className="text-gray-500 hover:text-blue-500" />
-      </button>
+        <div className="flex justify-between items-center max-w-md mx-auto">
+          <div>
+            <h1 className="text-xl font-black italic uppercase text-white">
+              Parlay-A-Day
+            </h1>
+            <p className="text-[10px] text-gray-500 font-bold uppercase">
+              {userProfile?.username || 'Player'}
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
             <div className="flex items-center gap-2 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/30 text-blue-500">
               <TrendingUp size={14} />
               <span className="text-xs font-black">
@@ -518,7 +498,7 @@ export default function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="p-4 max-w-md mx-auto pb-80">
+      <main className="p-4 max-w-md mx-auto pb-32">
         {/* PICKS TAB */}
         {activeTab === 'picks' && (
           <div className="space-y-4">
@@ -558,10 +538,10 @@ export default function App() {
                       )}
                     </div>
 
-                    <h3 className="text-lg font-black italic uppercase mt-1 text-blue-500">
+                    <h3 className="text-lg font-black italic uppercase mt-1 text-white">
                       {m.player_name}
                     </h3>
-                    <p className="text-white text-xs font-bold mb-4 mt-0.5 italic uppercase">
+                    <p className="text-blue-500 text-xs font-bold mb-4 mt-0.5 italic uppercase">
                       {m.question}
                     </p>
 
@@ -569,10 +549,10 @@ export default function App() {
                       <button
                         disabled={isLocked}
                         onClick={() => handleSelection(m.id, 'A')}
-                        className={`py-3 rounded-xl font-black italic uppercase text-[15px] border-2 transition-all ${
+                        className={`py-3 rounded-xl font-black italic uppercase text-[10px] border-2 transition-all ${
                           selections[m.id] === 'A'
                             ? 'border-blue-500 bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)]'
-                            : 'border-gray-800 bg-app-bg text-white hover:border-gray-700 disabled:cursor-not-allowed'
+                            : 'border-gray-800 bg-app-bg text-gray-500 hover:border-gray-700 disabled:cursor-not-allowed'
                         }`}
                       >
                         {m.option_a}
@@ -580,10 +560,10 @@ export default function App() {
                       <button
                         disabled={isLocked}
                         onClick={() => handleSelection(m.id, 'B')}
-                        className={`py-3 rounded-xl font-black italic uppercase text-[15px] border-2 transition-all ${
+                        className={`py-3 rounded-xl font-black italic uppercase text-[10px] border-2 transition-all ${
                           selections[m.id] === 'B'
                             ? 'border-blue-500 bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)]'
-                            : 'border-gray-800 bg-app-bg text-white hover:border-gray-700 disabled:cursor-not-allowed'
+                            : 'border-gray-800 bg-app-bg text-gray-500 hover:border-gray-700 disabled:cursor-not-allowed'
                         }`}
                       >
                         {m.option_b}
@@ -720,18 +700,13 @@ export default function App() {
                                 ) : (
                                   <XCircle size={14} className="text-red-500" />
                                 )}
-                                <div className="flex flex-col">
-                                  <p
-                                    className={`font-black uppercase text-[11px] ${
-                                      settled && !win ? 'text-gray-600 line-through' : 'text-white'
-                                    }`}
-                                  >
-                                    {pick.matchups?.player_name}
-                                  </p>
-                                  <p className="text-[9px] text-gray-500 uppercase font-bold">
-                                    {pick.matchups?.question}
-                                  </p>
-                                </div>
+                                <p
+                                  className={`font-black uppercase text-[11px] ${
+                                    settled && !win ? 'text-gray-600 line-through' : 'text-white'
+                                  }`}
+                                >
+                                  {pick.matchups?.player_name}
+                                </p>
                               </div>
                               <span className="text-[10px] font-black italic text-blue-500">
                                 {pick.selected_option === 'A'
@@ -742,36 +717,21 @@ export default function App() {
                           )
                         })}
 
-                        {!picks[0].is_claimed && (
-                          <div className="space-y-2 mt-4">
-                            {allSettled ? (
-                              <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                claimTicket(group)
-                              }}
-                              disabled={loading}
-                              className="w-full bg-yellow-500 hover:bg-yellow-600 py-3 rounded-xl font-black italic uppercase text-black transition-all disabled:opacity-50"
-                            >
-                              {loading
-                                ? 'Processing...'
-                                : allCorrect
-                                ? `Congrats! Claim Tokens (${wager}) and Points (+${payout.toLocaleString()})`
-                                : `Claim Tokens (${wager})`}
-                            </button>
-                            ) : (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  cancelTicket(group)
-                                }}
-                                disabled={loading}
-                                className="w-full bg-red-600/20 border border-red-500/50 hover:bg-red-600/30 py-3 rounded-xl font-black italic uppercase text-red-500 transition-all disabled:opacity-50"
-                              >
-                                {loading ? 'Unlocking...' : 'Unlock'}
-                              </button>
-                            )}
-                          </div>
+                        {allSettled && !picks[0].is_claimed && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              claimTicket(group)
+                            }}
+                            disabled={loading}
+                            className="w-full mt-4 bg-yellow-500 hover:bg-yellow-600 py-3 rounded-xl font-black italic uppercase text-black transition-all disabled:opacity-50"
+                          >
+                            {loading
+                              ? 'Processing...'
+                              : `Settle & Return ${wager} Token${wager > 1 ? 's' : ''} ${
+                                  allCorrect ? `(+${payout.toLocaleString()} Pts)` : ''
+                                }`}
+                          </button>
                         )}
                       </div>
                     )}
@@ -909,149 +869,6 @@ export default function App() {
             </div>
           </div>
         )}
-        {/* INFO TAB */}
-{activeTab === 'info' && (
-  <div className="space-y-4">
-    <div className="bg-card-bg border border-gray-800 rounded-2xl p-6">
-      <div className="flex items-center gap-3 mb-6">
-        <div className="bg-blue-500/20 p-3 rounded-xl">
-          <Info size={24} className="text-blue-500" />
-        </div>
-        <h3 className="text-2xl font-black italic uppercase text-white">
-          How It Works
-        </h3>
-      </div>
-
-      <div className="space-y-6">
-        {/* Daily Picks */}
-        <div>
-          <h4 className="text-blue-500 font-black uppercase text-sm mb-2 flex items-center gap-2">
-            <span className="bg-blue-500 text-black w-6 h-6 rounded-full flex items-center justify-center text-xs">1</span>
-            Daily Picks
-          </h4>
-          <p className="text-gray-400 text-sm leading-relaxed">
-            Every day, choose from NFL props. Make your predictions. You can select multiple picks to build a parlay.
-          </p>
-        </div>
-
-        {/* Lock Tokens */}
-        <div>
-          <h4 className="text-yellow-500 font-black uppercase text-sm mb-2 flex items-center gap-2">
-            <span className="bg-yellow-500 text-black w-6 h-6 rounded-full flex items-center justify-center text-xs">2</span>
-            Lock Tokens
-          </h4>
-          <p className="text-gray-400 text-sm leading-relaxed">
-            Each ticket locks 1-5 tokens (your choice). You start with 5 tokens. The more you lock, the bigger your potential payout! You can unlock your tokens at any time.
-          </p>
-        </div>
-
-        {/* Win Points */}
-        <div>
-          <h4 className="text-green-500 font-black uppercase text-sm mb-2 flex items-center gap-2">
-            <span className="bg-green-500 text-black w-6 h-6 rounded-full flex items-center justify-center text-xs">3</span>
-            Win Points
-          </h4>
-          <p className="text-gray-400 text-sm leading-relaxed">
-            When games settle, claim your ticket. If you win, you get your tokens back PLUS points. If you lose, you still get your tokens back.
-          </p>
-        </div>
-
-        {/* Payout Formula */}
-        <div className="bg-app-bg border border-gray-800 rounded-xl p-4">
-          <h4 className="text-white font-black uppercase text-sm mb-3">Payout Formula</h4>
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500">1 Leg × 1 Token</span>
-              <span className="text-blue-500 font-black">100 PTS</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500">2 Legs × 1 Token</span>
-              <span className="text-blue-500 font-black">200 PTS</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500">3 Legs × 1 Token</span>
-              <span className="text-blue-500 font-black">400 PTS</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-gray-500">4 Legs × 1 Token</span>
-              <span className="text-blue-500 font-black">800 PTS</span>
-            </div>
-            <div className="flex justify-between items-center border-t border-gray-800 pt-2">
-              <span className="text-gray-500">5 Legs × 5 Tokens</span>
-              <span className="text-yellow-500 font-black">8,000 PTS 🔥</span>
-            </div>
-          </div>
-          <p className="text-[10px] text-gray-600 mt-3 text-center uppercase font-bold">
-            Formula: 100 × 2^(legs-1) × tokens
-          </p>
-        </div>
-
-        {/* Unlock Feature */}
-        <div>
-          <h4 className="text-red-500 font-black uppercase text-sm mb-2 flex items-center gap-2">
-            <Lock size={16} className="text-red-500" />
-            Unlock Anytime
-          </h4>
-          <p className="text-gray-400 text-sm leading-relaxed">
-            Changed your mind? Unlock your ticket to get your tokens back. The ticket will be voided (no points possible).
-          </p>
-        </div>
-
-        {/* Coming Soon */}
-        <div className="bg-gradient-to-r from-purple-500/10 to-blue-500/10 border border-purple-500/30 rounded-xl p-5">
-          <h4 className="text-purple-400 font-black uppercase text-sm mb-3 flex items-center gap-2">
-            <TrendingUp size={16} />
-            Coming Soon 🚀
-          </h4>
-          <div className="space-y-3 text-sm text-gray-300">
-            <p className="flex items-start gap-2">
-              <span className="text-purple-500 mt-1">•</span>
-              <span><strong className="text-white">Redeem Points for Tokens:</strong> Convert your points back into tokens to keep playing</span>
-            </p>
-            <p className="flex items-start gap-2">
-              <span className="text-purple-500 mt-1">•</span>
-              <span><strong className="text-white">Crypto Integration:</strong> Blockchain-based rewards.</span>
-            </p>
-            <p className="flex items-start gap-2">
-              <span className="text-purple-500 mt-1">•</span>
-              <span><strong className="text-white">More Sports:</strong> NBA, NFL, NHL, MLB, and more daily props</span>
-            </p>
-          </div>
-        </div>
-
-        {/* Tips */}
-        <div className="border-t border-gray-800 pt-4">
-          <h4 className="text-blue-500 font-black uppercase text-xs mb-3">Pro Tips</h4>
-          <ul className="space-y-2 text-xs text-gray-400">
-            <li className="flex items-start gap-2">
-              <span className="text-blue-500">→</span>
-              <span>Start with 1-2 leg parlays to build your token stack</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-blue-500">→</span>
-              <span>Higher leg parlays = exponential payouts but harder to win</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-blue-500">→</span>
-              <span>Check the leaderboard to see top performers</span>
-            </li>
-            <li className="flex items-start gap-2">
-              <span className="text-blue-500">→</span>
-              <span>You always get your tokens back, so don't be afraid to play!</span>
-            </li>
-          </ul>
-        </div>
-      </div>
-
-      <button
-        onClick={() => setActiveTab('picks')}
-        className="w-full mt-6 bg-blue-600 hover:bg-blue-700 py-3 rounded-xl font-black italic uppercase text-white transition-all"
-      >
-        Got It! Let's Play
-      </button>
-    </div>
-  </div>
-)}
       </main>
 
       {/* Bottom Navigation */}
@@ -1115,9 +932,6 @@ export default function App() {
                 <p className="text-[9px] text-gray-500 font-bold uppercase mb-1">
                   {selectionCount} Leg{selectionCount > 1 ? 's' : ''}
                 </p>
-                <p className="text-[11px] text-yellow-500 font-black uppercase mb-2">
-                  Locks {wagerAmount} Token{wagerAmount > 1 ? 's' : ''}
-                </p>
                 <div className="flex gap-1">
                   {[1, 2, 3, 4, 5].map((w) => (
                     <button
@@ -1144,6 +958,10 @@ export default function App() {
             >
               {loading ? 'Submitting...' : 'Submit Ticket'}
             </button>
+
+            <p className="text-center text-[9px] text-gray-600 font-bold uppercase mt-3">
+              Costs {wagerAmount} Token{wagerAmount > 1 ? 's' : ''}
+            </p>
           </div>
         </div>
       )}
