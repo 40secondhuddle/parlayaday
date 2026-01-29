@@ -13,6 +13,7 @@ import {
   Clock,
   ChevronDown,
   TrendingUp,
+  Info,
 } from 'lucide-react'
 
 export default function App() {
@@ -36,6 +37,7 @@ export default function App() {
   const [historyFilter, setHistoryFilter] = useState('open')
   const [expandedTicket, setExpandedTicket] = useState(null)
   const [currentTime, setCurrentTime] = useState(new Date())
+  const [showInfo, setShowInfo] = useState(false)
 
   // Initialize auth and time ticker
   useEffect(() => {
@@ -427,7 +429,7 @@ export default function App() {
               Parlay-A-Day
             </h1>
             <p className="text-gray-500 text-sm font-bold uppercase">
-              Daily Sports Betting Challenge
+              Daily Sports Prediction Challenge
             </p>
           </div>
 
@@ -483,6 +485,13 @@ export default function App() {
             </p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowInfo(true)}
+              className="p-2 hover:bg-gray-800/50 rounded-lg transition-colors"
+              title="How to Play"
+            >
+              <Info size={20} className="text-gray-400" />
+            </button>
             <div className="flex items-center gap-2 bg-blue-500/10 px-3 py-1 rounded-full border border-blue-500/30 text-blue-500">
               <TrendingUp size={14} />
               <span className="text-xs font-black">
@@ -962,6 +971,125 @@ export default function App() {
             <p className="text-center text-[9px] text-gray-600 font-bold uppercase mt-3">
               Costs {wagerAmount} Token{wagerAmount > 1 ? 's' : ''}
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Info/Help Modal */}
+      {showInfo && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
+          <div className="bg-app-bg border border-gray-800 rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-6 space-y-6">
+              <div className="flex justify-between items-center">
+                <h2 className="text-2xl font-black italic uppercase text-white">How to Play</h2>
+                <button
+                  onClick={() => setShowInfo(false)}
+                  className="text-gray-500 hover:text-white"
+                >
+                  <XCircle size={24} />
+                </button>
+              </div>
+
+              {/* Daily Picks */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-blue-500 text-white px-2 py-1 rounded text-xs font-black">1</span>
+                  <h3 className="font-black uppercase text-white">Daily Picks</h3>
+                </div>
+                <p className="text-sm text-gray-400">
+                  Select player props from today's games. Choose Over or Under for each stat. Combine multiple picks to build your parlay (up to 5 legs).
+                </p>
+              </div>
+
+              {/* Lock Tokens */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-yellow-500 text-black px-2 py-1 rounded text-xs font-black">2</span>
+                  <h3 className="font-black uppercase text-white">Lock Tokens</h3>
+                </div>
+                <p className="text-sm text-gray-400">
+                  Choose how many tokens to wager (1x-5x multiplier). Higher wagers = bigger payouts. You start with 5 tokens and get +1 token every time you log in on a new day!
+                </p>
+              </div>
+
+              {/* Win Points */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-green-500 text-black px-2 py-1 rounded text-xs font-black">3</span>
+                  <h3 className="font-black uppercase text-white">Win Points</h3>
+                </div>
+                <p className="text-sm text-gray-400">
+                  If all your picks hit, claim your points in the History tab. Your tokens are ALWAYS returned - risk-free gameplay!
+                </p>
+              </div>
+
+              {/* Payout Table */}
+              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4">
+                <h3 className="font-black uppercase text-white mb-3 text-sm">Payout Formula</h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">1 Leg × 1 Token</span>
+                    <span className="text-blue-400 font-bold">100 PTS</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">2 Legs × 1 Token</span>
+                    <span className="text-blue-400 font-bold">200 PTS</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">3 Legs × 1 Token</span>
+                    <span className="text-blue-400 font-bold">400 PTS</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">4 Legs × 1 Token</span>
+                    <span className="text-blue-400 font-bold">800 PTS</span>
+                  </div>
+                  <div className="flex justify-between border-t border-gray-800 pt-2">
+                    <span className="text-gray-400">5 Legs × 5 Tokens</span>
+                    <span className="text-yellow-400 font-bold">8,000 PTS 🔥</span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    Formula: 100 × 2^(legs-1) × tokens
+                  </p>
+                </div>
+              </div>
+
+              {/* Unlock Feature */}
+              <div>
+                <h3 className="font-black uppercase text-white mb-2 text-sm">Unlock Tickets</h3>
+                <p className="text-sm text-gray-400">
+                  Changed your mind? Cancel open tickets before games start to get your tokens back. The ticket is voided and moves to Settled.
+                </p>
+              </div>
+
+              {/* Coming Soon */}
+              <div className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border border-purple-500/30 rounded-xl p-4">
+                <h3 className="font-black uppercase text-purple-400 mb-2 text-sm">🚀 Coming Soon</h3>
+                <ul className="text-sm text-gray-400 space-y-1">
+                  <li>• More Sports (NBA, NFL, NHL, MLB)</li>
+                  <li>• Crypto Integration (blockchain rewards, NFT achievements)</li>
+                  <li>• Token Shop (convert points to tokens)</li>
+                </ul>
+              </div>
+
+              {/* Pro Tips */}
+              <div>
+                <h3 className="font-black uppercase text-white mb-2 text-sm">💡 Pro Tips</h3>
+                <ul className="text-sm text-gray-400 space-y-1">
+                  <li>• Start with 1-2 leg parlays to learn</li>
+                  <li>• Higher legs = exponential payouts but harder to win</li>
+                  <li>• Check the leaderboard to see top performers</li>
+                  <li>• Tokens always return - experiment without risk!</li>
+                  <li>• Log in daily to collect your +1 token bonus</li>
+                </ul>
+              </div>
+
+              <button
+                onClick={() => setShowInfo(false)}
+                className="w-full bg-blue-600 hover:bg-blue-700 py-3 rounded-xl font-black italic uppercase text-white transition-all"
+              >
+                Got It! Let's Play
+              </button>
+            </div>
           </div>
         </div>
       )}
