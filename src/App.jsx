@@ -38,6 +38,7 @@ export default function App() {
   const [expandedTicket, setExpandedTicket] = useState(null)
   const [currentTime, setCurrentTime] = useState(new Date())
   const [showInfo, setShowInfo] = useState(false)
+  const [showDailyBonus, setShowDailyBonus] = useState(false)
 
   // Initialize auth and time ticker
   useEffect(() => {
@@ -99,34 +100,41 @@ export default function App() {
     const today = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD format
     const lastLogin = profile.last_login_date
 
-    // If last login was before today, award +1 token
+    // If last login was before today, show claim modal
     if (lastLogin !== today) {
-      const newTokenCount = profile.tokens + 1
-
-      const { data, error } = await supabase
-        .from('profiles')
-        .update({
-          tokens: newTokenCount,
-          last_login_date: today
-        })
-        .eq('id', session.user.id)
-        .select()
-        .single()
-
-      if (error) {
-        console.error('Daily bonus error:', error)
-        return
-      }
-
-      // Update local state
-      setUserProfile(data)
-      
-      // Show success message
-      toast.success(`🎁 Daily Login Bonus: +1 Token!`, {
-        duration: 4000,
-        icon: '🪙',
-      })
+      setShowDailyBonus(true)
     }
+  }
+
+  async function claimDailyBonus() {
+    const today = new Date().toLocaleDateString('en-CA')
+    const newTokenCount = (userProfile?.beta_tokens || 0) + 1
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        beta_tokens: newTokenCount,
+        last_login_date: today
+      })
+      .eq('id', session.user.id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Daily bonus error:', error)
+      toast.error('Failed to claim bonus')
+      return
+    }
+
+    // Update local state
+    setUserProfile(data)
+    setShowDailyBonus(false)
+    
+    // Show success message
+    toast.success(`🎁 +1 Token Claimed!`, {
+      duration: 4000,
+      icon: '🪙',
+    })
   }
 
   async function fetchMatchups() {
@@ -337,6 +345,70 @@ export default function App() {
   }
 
   // ===== CLAIM HANDLERS =====
+  async function unlockTicket(entryGroup) {
+    const picks = activeEntries.filter((p) => p.entry_group === entryGroup)
+    const wager = picks[0]?.wager_amount || 1
+
+    // Show warning toast
+    toast((t) => (
+      <div className="flex flex-col gap-2">
+        <p className="font-bold text-sm">⚠️ Warning</p>
+        <p className="text-xs">Unlocking will return {wager} token{wager > 1 ? 's' : ''} and void this entry. Continue?</p>
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              toast.dismiss(t.id)
+              
+              setLoading(true)
+
+              // Mark picks as claimed (voided)
+              const { error } = await supabase
+                .from('user_picks')
+                .update({ is_claimed: true })
+                .eq('entry_group', entryGroup)
+                .eq('user_id', session.user.id)
+
+              if (error) {
+                console.error('Unlock error:', error)
+                toast.error('Failed to unlock ticket')
+                setLoading(false)
+                return
+              }
+
+              // Return tokens
+              const { error: profileError } = await supabase
+                .from('profiles')
+                .update({ beta_tokens: (userProfile?.beta_tokens || 0) + wager })
+                .eq('id', session.user.id)
+
+              if (profileError) {
+                console.error('Token return error:', profileError)
+                toast.error('Failed to return tokens')
+              } else {
+                toast.success(`Ticket unlocked. ${wager} token${wager > 1 ? 's' : ''} returned!`)
+                fetchProfile()
+                fetchHistory()
+              }
+
+              setLoading(false)
+            }}
+            className="flex-1 bg-red-600 hover:bg-red-700 px-3 py-1 rounded text-xs font-bold text-white"
+          >
+            Yes, Unlock
+          </button>
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="flex-1 bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded text-xs font-bold text-white"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: 10000,
+    })
+  }
+
   async function claimTicket(entryGroup) {
     setLoading(true)
 
@@ -507,7 +579,7 @@ export default function App() {
       </nav>
 
       {/* Main Content */}
-      <main className="p-4 max-w-md mx-auto pb-32">
+      <main className="p-4 max-w-md mx-auto pb-80">
         {/* PICKS TAB */}
         {activeTab === 'picks' && (
           <div className="space-y-4">
@@ -558,7 +630,7 @@ export default function App() {
                       <button
                         disabled={isLocked}
                         onClick={() => handleSelection(m.id, 'A')}
-                        className={`py-3 rounded-xl font-black italic uppercase text-[10px] border-2 transition-all ${
+                        className={`py-3 rounded-xl font-black italic uppercase text-[13px] border-2 transition-all ${
                           selections[m.id] === 'A'
                             ? 'border-blue-500 bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)]'
                             : 'border-gray-800 bg-app-bg text-gray-500 hover:border-gray-700 disabled:cursor-not-allowed'
@@ -569,7 +641,7 @@ export default function App() {
                       <button
                         disabled={isLocked}
                         onClick={() => handleSelection(m.id, 'B')}
-                        className={`py-3 rounded-xl font-black italic uppercase text-[10px] border-2 transition-all ${
+                        className={`py-3 rounded-xl font-black italic uppercase text-[13px] border-2 transition-all ${
                           selections[m.id] === 'B'
                             ? 'border-blue-500 bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.3)]'
                             : 'border-gray-800 bg-app-bg text-gray-500 hover:border-gray-700 disabled:cursor-not-allowed'
@@ -661,11 +733,11 @@ export default function App() {
                     >
                       <div>
                         <p className="font-black italic text-sm uppercase text-white">
-                          Parlay Slip
+                          Entry Slip
                           <span className="text-blue-500 ml-2">+{payout.toLocaleString()}</span>
                         </p>
                         <p className="text-[10px] text-gray-500 font-bold uppercase">
-                          {picks.length} Legs • {wager}x Wager
+                          {picks.length} Legs • {wager}x Multiplier
                         </p>
                       </div>
 
@@ -699,32 +771,52 @@ export default function App() {
                           return (
                             <div
                               key={i}
-                              className="flex justify-between items-center py-2 border-b border-gray-800 last:border-0"
+                              className="py-2 border-b border-gray-800 last:border-0"
                             >
-                              <div className="flex items-center gap-3">
-                                {!settled ? (
-                                  <Clock size={14} className="text-gray-600" />
-                                ) : win ? (
-                                  <CheckCircle2 size={14} className="text-green-500" />
-                                ) : (
-                                  <XCircle size={14} className="text-red-500" />
-                                )}
-                                <p
-                                  className={`font-black uppercase text-[11px] ${
-                                    settled && !win ? 'text-gray-600 line-through' : 'text-white'
-                                  }`}
-                                >
-                                  {pick.matchups?.player_name}
-                                </p>
+                              <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-3">
+                                  {!settled ? (
+                                    <Clock size={14} className="text-gray-600" />
+                                  ) : win ? (
+                                    <CheckCircle2 size={14} className="text-green-500" />
+                                  ) : (
+                                    <XCircle size={14} className="text-red-500" />
+                                  )}
+                                  <div>
+                                    <p
+                                      className={`font-black uppercase text-[11px] ${
+                                        settled && !win ? 'text-gray-600 line-through' : 'text-white'
+                                      }`}
+                                    >
+                                      {pick.matchups?.player_name}
+                                    </p>
+                                    <p className="text-[9px] text-gray-500 uppercase font-bold">
+                                      {pick.matchups?.question}
+                                    </p>
+                                  </div>
+                                </div>
+                                <span className="text-[10px] font-black italic text-blue-500">
+                                  {pick.selected_option === 'A'
+                                    ? pick.matchups?.option_a
+                                    : pick.matchups?.option_b}
+                                </span>
                               </div>
-                              <span className="text-[10px] font-black italic text-blue-500">
-                                {pick.selected_option === 'A'
-                                  ? pick.matchups?.option_a
-                                  : pick.matchups?.option_b}
-                              </span>
                             </div>
                           )
                         })}
+
+                        {!allSettled && historyFilter === 'open' && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              unlockTicket(group)
+                            }}
+                            disabled={loading}
+                            className="w-full mt-4 bg-red-600/20 border border-red-500/50 hover:bg-red-600/30 py-3 rounded-xl font-black italic uppercase text-red-500 transition-all disabled:opacity-50"
+                          >
+                            {loading ? 'Processing...' : 'Unlock & Return Tokens'}
+                          </button>
+                        )}
 
                         {allSettled && !picks[0].is_claimed && (
                           <button
@@ -737,9 +829,9 @@ export default function App() {
                           >
                             {loading
                               ? 'Processing...'
-                              : `Settle & Return ${wager} Token${wager > 1 ? 's' : ''} ${
-                                  allCorrect ? `(+${payout.toLocaleString()} Pts)` : ''
-                                }`}
+                              : allCorrect
+                              ? `Congrats! Claim Tokens (${wager}) and Points (+${payout.toLocaleString()})`
+                              : `Claim Tokens (${wager})`}
                           </button>
                         )}
                       </div>
@@ -941,21 +1033,26 @@ export default function App() {
                 <p className="text-[9px] text-gray-500 font-bold uppercase mb-1">
                   {selectionCount} Leg{selectionCount > 1 ? 's' : ''}
                 </p>
-                <div className="flex gap-1">
-                  {[1, 2, 3, 4, 5].map((w) => (
-                    <button
-                      key={w}
-                      onClick={() => setWagerAmount(w)}
-                      disabled={!userProfile || userProfile.beta_tokens < w}
-                      className={`w-8 h-8 rounded-lg font-black text-xs transition-all ${
-                        wagerAmount === w
-                          ? 'bg-yellow-500 text-black'
-                          : 'bg-app-bg border border-gray-800 text-gray-600 hover:border-yellow-500 disabled:opacity-30 disabled:cursor-not-allowed'
-                      }`}
-                    >
-                      {w}x
-                    </button>
-                  ))}
+                <div className="space-y-2">
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 4, 5].map((w) => (
+                      <button
+                        key={w}
+                        onClick={() => setWagerAmount(w)}
+                        disabled={!userProfile || userProfile.beta_tokens < w}
+                        className={`w-8 h-8 rounded-lg font-black text-xs transition-all ${
+                          wagerAmount === w
+                            ? 'bg-yellow-500 text-black'
+                            : 'bg-app-bg border border-gray-800 text-gray-600 hover:border-yellow-500 disabled:opacity-30 disabled:cursor-not-allowed'
+                        }`}
+                      >
+                        {w}x
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-center text-[10px] text-white font-bold uppercase">
+                    Locks {wagerAmount} Token{wagerAmount > 1 ? 's' : ''}
+                  </p>
                 </div>
               </div>
             </div>
@@ -965,12 +1062,8 @@ export default function App() {
               disabled={loading || !userProfile || userProfile.beta_tokens < wagerAmount}
               className="w-full bg-blue-600 hover:bg-blue-700 py-4 rounded-xl font-black italic uppercase text-lg text-white transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-[0_0_20px_rgba(37,99,235,0.2)]"
             >
-              {loading ? 'Submitting...' : 'Submit Ticket'}
+              {loading ? 'Submitting...' : 'Submit Entry'}
             </button>
-
-            <p className="text-center text-[9px] text-gray-600 font-bold uppercase mt-3">
-              Costs {wagerAmount} Token{wagerAmount > 1 ? 's' : ''}
-            </p>
           </div>
         </div>
       )}
@@ -1008,7 +1101,7 @@ export default function App() {
                   <h3 className="font-black uppercase text-white">Lock Tokens</h3>
                 </div>
                 <p className="text-sm text-gray-400">
-                  Choose how many tokens to wager (1x-5x multiplier). Higher wagers = bigger payouts. You start with 5 tokens and get +1 token every time you log in on a new day!
+                  Choose how many tokens to lock (1x-5x multiplier). Higher multipliers = bigger payouts. You start with 5 tokens and get +1 token every time you log in on a new day!
                 </p>
               </div>
 
@@ -1019,7 +1112,7 @@ export default function App() {
                   <h3 className="font-black uppercase text-white">Win Points</h3>
                 </div>
                 <p className="text-sm text-gray-400">
-                  If all your picks hit, claim your points in the History tab. Your tokens are ALWAYS returned - risk-free gameplay!
+                  If all your predictions hit, claim your points in the History tab. Your tokens are ALWAYS returned - risk-free play!
                 </p>
               </div>
 
@@ -1090,6 +1183,44 @@ export default function App() {
                 Got It! Let's Play
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Daily Bonus Claim Modal */}
+      {showDailyBonus && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4">
+          <div className="bg-gradient-to-br from-yellow-900/30 to-app-bg border-2 border-yellow-500/50 rounded-2xl max-w-sm w-full p-8 text-center shadow-[0_0_50px_rgba(234,179,8,0.3)]">
+            <div className="mb-6">
+              <div className="text-6xl mb-4">🎁</div>
+              <h2 className="text-3xl font-black italic uppercase text-yellow-500 mb-2">
+                Daily Bonus!
+              </h2>
+              <p className="text-gray-400 text-sm">
+                You've got a free token waiting for you!
+              </p>
+            </div>
+
+            <div className="bg-app-bg/50 border border-yellow-500/30 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-center gap-2 text-yellow-500">
+                <Coins size={24} />
+                <span className="text-4xl font-black">+1</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-2 font-bold uppercase">
+                Free Token
+              </p>
+            </div>
+
+            <button
+              onClick={claimDailyBonus}
+              className="w-full bg-yellow-500 hover:bg-yellow-600 py-4 rounded-xl font-black italic uppercase text-lg text-black transition-all shadow-[0_0_20px_rgba(234,179,8,0.3)]"
+            >
+              Claim Your Token!
+            </button>
+
+            <p className="text-xs text-gray-600 mt-4">
+              Come back tomorrow for another free token
+            </p>
           </div>
         </div>
       )}
