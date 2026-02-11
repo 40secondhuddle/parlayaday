@@ -26,12 +26,11 @@ export default function UserProfileModal({ userId, onClose }) {
 
     setUserProfile(profile)
 
-    // Fetch user's settled picks
+    // Fetch user's settled picks (both claimed and unclaimed)
     const { data: picks } = await supabase
       .from('user_picks')
       .select('*, matchups(*)')
       .eq('user_id', userId)
-      .eq('is_claimed', true)
       .order('created_at', { ascending: false })
 
     setUserPicks(picks || [])
@@ -53,27 +52,29 @@ export default function UserProfileModal({ userId, onClose }) {
 
   Object.entries(groupedPicks).forEach(([group, picks]) => {
     const allSettled = picks.every((p) => p.matchups?.winning_option !== null)
+    
+    // Only include if all legs are settled
+    if (!allSettled) return
+    
     const allCorrect = picks.every(
       (p) => p.selected_option === p.matchups?.winning_option
     )
 
-    if (allSettled) {
-      const wager = picks[0].wager_amount || 1
-      const basePoints = 100 * Math.pow(2, picks.length - 1)
-      const payout = basePoints * wager
+    const wager = picks[0].wager_amount || 1
+    const basePoints = 100 * Math.pow(2, picks.length - 1)
+    const payout = basePoints * wager
 
-      const ticket = {
-        group,
-        picks,
-        payout,
-        won: allCorrect,
-      }
+    const ticket = {
+      group,
+      picks,
+      payout,
+      won: allCorrect,
+    }
 
-      if (allCorrect) {
-        wins.push(ticket)
-      } else {
-        losses.push(ticket)
-      }
+    if (allCorrect) {
+      wins.push(ticket)
+    } else {
+      losses.push(ticket)
     }
   })
 
