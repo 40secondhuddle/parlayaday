@@ -15,6 +15,7 @@ import {
   TrendingUp,
   Info,
 } from 'lucide-react'
+import UserProfileModal from './UserProfileModal'
 
 export default function App() {
   // Auth State
@@ -39,6 +40,7 @@ export default function App() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [showInfo, setShowInfo] = useState(false)
   const [showDailyBonus, setShowDailyBonus] = useState(false)
+  const [viewingUserId, setViewingUserId] = useState(null)
 
   // Initialize auth and time ticker
   useEffect(() => {
@@ -984,7 +986,12 @@ export default function App() {
                           #{i + 1}
                         </td>
                         <td className="p-4 font-bold text-white uppercase">
-                          {user.username}
+                          <button
+                            onClick={() => setViewingUserId(user.id)}
+                            className="hover:text-blue-500 transition-colors text-left"
+                          >
+                            {user.username}
+                          </button>
                           {user.id === session.user.id && (
                             <span className="ml-2 text-[9px] bg-blue-500/20 text-blue-500 px-2 py-0.5 rounded-full">
                               YOU
@@ -1333,6 +1340,14 @@ export default function App() {
             </p>
           </div>
         </div>
+      )}
+
+      {/* User Profile Modal */}
+      {viewingUserId && (
+        <UserProfileModal
+          userId={viewingUserId}
+          onClose={() => setViewingUserId(null)}
+        />
       )}
     </div>
   )
