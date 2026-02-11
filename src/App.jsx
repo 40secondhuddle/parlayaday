@@ -137,14 +137,84 @@ export default function App() {
     })
   }
 
+  async function convertPointsToTokens() {
+    const pointsNeeded = 1000
+    const currentPoints = userProfile?.points || 0
+    
+    if (currentPoints < pointsNeeded) {
+      toast.error(`Need ${pointsNeeded} points to convert`)
+      return
+    }
+
+    // Calculate how many tokens user can get
+    const tokensToAdd = Math.floor(currentPoints / pointsNeeded)
+    const pointsToDeduct = tokensToAdd * pointsNeeded
+
+    // Show confirmation toast
+    toast((t) => (
+      <div className="flex flex-col gap-2">
+        <p className="font-bold text-sm">⚠️ Confirm Conversion</p>
+        <p className="text-xs">
+          Convert {pointsToDeduct.toLocaleString()} points → {tokensToAdd} token{tokensToAdd > 1 ? 's' : ''}?
+        </p>
+        <p className="text-xs text-yellow-500">This is a one-way conversion.</p>
+        <div className="flex gap-2">
+          <button
+            onClick={async () => {
+              toast.dismiss(t.id)
+              setLoading(true)
+
+              const newPoints = currentPoints - pointsToDeduct
+              const newTokens = (userProfile?.beta_tokens || 0) + tokensToAdd
+
+              const { data, error } = await supabase
+                .from('profiles')
+                .update({
+                  points: newPoints,
+                  beta_tokens: newTokens
+                })
+                .eq('id', session.user.id)
+                .select()
+                .single()
+
+              if (error) {
+                console.error('Conversion error:', error)
+                toast.error('Failed to convert points')
+              } else {
+                setUserProfile(data)
+                toast.success(`✅ Converted! +${tokensToAdd} token${tokensToAdd > 1 ? 's' : ''}`, {
+                  duration: 4000,
+                  icon: '🪙',
+                })
+              }
+
+              setLoading(false)
+            }}
+            className="flex-1 bg-yellow-500 hover:bg-yellow-600 px-3 py-1 rounded text-xs font-bold text-black"
+          >
+            Yes, Convert
+          </button>
+          <button
+            onClick={() => toast.dismiss(t.id)}
+            className="flex-1 bg-gray-600 hover:bg-gray-700 px-3 py-1 rounded text-xs font-bold text-white"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    ), {
+      duration: 15000,
+    })
+  }
+
   async function fetchMatchups() {
     setLoading(true)
-    const today = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD format
+    const now = new Date().toISOString()
 
     const { data, error } = await supabase
       .from('matchups')
       .select('*')
-      .eq('scheduled_date', today)
+      .gte('lock_time', now)
       .order('lock_time', { ascending: true })
 
     if (error) {
@@ -193,12 +263,11 @@ export default function App() {
       dateFilter.setDate(dateFilter.getDate() - 30)
     }
 
-    // Get picks for the timeframe
+    // Get ALL picks for the timeframe (not just claimed)
     const { data: picks } = await supabase
       .from('user_picks')
       .select('*, matchups(*)')
       .gte('created_at', dateFilter.toISOString())
-      .eq('is_claimed', true)
 
     if (!picks) {
       setLoading(false)
@@ -224,15 +293,17 @@ export default function App() {
       return acc
     }, {})
 
-    // Calculate points for winning parlays
+    // Calculate points for winning parlays (whether claimed or not)
     Object.values(grouped).forEach((group) => {
       const userId = group[0].user_id
       const wager = group[0].wager_amount || 1
+      const allSettled = group.every((leg) => leg.matchups?.winning_option !== null)
       const allWin = group.every(
         (leg) => leg.matchups?.winning_option === leg.selected_option
       )
 
-      if (allWin && userScores[userId]) {
+      // Only count if all legs are settled and won
+      if (allSettled && allWin && userScores[userId]) {
         const basePoints = 100 * Math.pow(2, group.length - 1)
         userScores[userId].points += basePoints * wager
       }
@@ -584,7 +655,7 @@ export default function App() {
         {activeTab === 'picks' && (
           <div className="space-y-4">
             <h3 className="text-[10px] font-black uppercase text-gray-500 tracking-widest">
-              Today's Board
+              Available Picks
             </h3>
 
             {loading && matchups.length === 0 ? (
@@ -592,7 +663,7 @@ export default function App() {
             ) : matchups.length === 0 ? (
               <div className="bg-card-bg border border-gray-800 rounded-2xl p-8 text-center">
                 <p className="text-gray-500 font-bold uppercase text-sm">
-                  No matchups available today
+                  No picks available right now
                 </p>
               </div>
             ) : (
@@ -961,6 +1032,44 @@ export default function App() {
                 </div>
               </div>
 
+              {/* Points to Tokens Conversion */}
+              <div className="bg-gradient-to-r from-blue-900/20 to-yellow-900/20 border border-yellow-500/30 rounded-xl p-4 mb-6">
+                <div className="flex items-center gap-2 mb-3">
+                  <Coins size={18} className="text-yellow-500" />
+                  <h4 className="font-black uppercase text-white text-sm">Convert Points</h4>
+                </div>
+                
+                <div className="space-y-2 mb-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400 text-xs font-bold uppercase">Your Points</span>
+                    <span className="text-blue-400 font-black text-lg">
+                      {userProfile?.points?.toLocaleString() || 0}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-400 text-xs font-bold uppercase">Can Convert to</span>
+                    <span className="text-yellow-400 font-black text-lg">
+                      {Math.floor((userProfile?.points || 0) / 1000)} Token{Math.floor((userProfile?.points || 0) / 1000) !== 1 ? 's' : ''}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={convertPointsToTokens}
+                  disabled={loading || !userProfile || (userProfile?.points || 0) < 1000}
+                  className="w-full bg-yellow-500 hover:bg-yellow-600 py-3 rounded-xl font-black italic uppercase text-sm text-black transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {(userProfile?.points || 0) < 1000 
+                    ? `Need ${1000 - (userProfile?.points || 0)} More Points`
+                    : `Convert to ${Math.floor((userProfile?.points || 0) / 1000)} Token${Math.floor((userProfile?.points || 0) / 1000) !== 1 ? 's' : ''}`
+                  }
+                </button>
+                
+                <p className="text-[9px] text-gray-600 text-center mt-2 font-bold uppercase">
+                  1000 Points = 1 Token
+                </p>
+              </div>
+
               <button
                 onClick={handleSignOut}
                 className="w-full bg-red-600/20 border border-red-500/50 hover:bg-red-600/30 py-3 rounded-xl font-black italic uppercase text-red-500 transition-all"
@@ -1083,14 +1192,14 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Daily Picks */}
+              {/* Picks */}
               <div>
                 <div className="flex items-center gap-2 mb-2">
                   <span className="bg-blue-500 text-white px-2 py-1 rounded text-xs font-black">1</span>
-                  <h3 className="font-black uppercase text-white">Daily Picks</h3>
+                  <h3 className="font-black uppercase text-white">Make Your Picks</h3>
                 </div>
                 <p className="text-sm text-gray-400">
-                  Select player props from today's games. Choose Over or Under for each stat. Combine multiple picks to build your parlay (up to 5 legs).
+                  Browse all available player props and build your own parlays. Each pick locks at the time set for that game — combine as many as you want (up to 5 legs).
                 </p>
               </div>
 
@@ -1150,7 +1259,7 @@ export default function App() {
               <div>
                 <h3 className="font-black uppercase text-white mb-2 text-sm">Unlock Tickets</h3>
                 <p className="text-sm text-gray-400">
-                  Changed your mind? Cancel open tickets before games start to get your tokens back. The ticket is voided and moves to Settled.
+                  Changed your mind? Cancel open tickets at any time to get your tokens back. The ticket is voided and moves to Settled.
                 </p>
               </div>
 
@@ -1158,9 +1267,9 @@ export default function App() {
               <div className="bg-gradient-to-r from-purple-900/20 to-blue-900/20 border border-purple-500/30 rounded-xl p-4">
                 <h3 className="font-black uppercase text-purple-400 mb-2 text-sm">🚀 Coming Soon</h3>
                 <ul className="text-sm text-gray-400 space-y-1">
-                  <li>• More Sports (NBA, NFL, NHL, MLB)</li>
-                  <li>• Crypto Integration (blockchain rewards, NFT achievements)</li>
-                  <li>• Token Shop (convert points to tokens)</li>
+                  <li>• More Sports (NBA, NHL, MLB)</li>
+                  <li>• Crypto Integration (native token)</li>
+                  <li>• Live Stat Tracking & Notifications</li>
                 </ul>
               </div>
 
@@ -1168,11 +1277,12 @@ export default function App() {
               <div>
                 <h3 className="font-black uppercase text-white mb-2 text-sm">💡 Pro Tips</h3>
                 <ul className="text-sm text-gray-400 space-y-1">
+                  <li>• Log in daily to collect your +1 token bonus</li>
                   <li>• Start with 1-2 leg parlays to learn</li>
                   <li>• Higher legs = exponential payouts but harder to win</li>
                   <li>• Check the leaderboard to see top performers</li>
-                  <li>• Tokens always return - experiment without risk!</li>
-                  <li>• Log in daily to collect your +1 token bonus</li>
+                  <li>• Tokens always return!</li>
+                  <li>• Convert 1000 points to 1 token at any time</li>
                 </ul>
               </div>
 
